@@ -27,7 +27,7 @@ get_log_timestamp() {
   local clean_time=$(clean_log_date "$1")
   
   if [[ "$(uname)" == "Darwin" ]]; then
-    date -j -f "%d %b %Y %H %M %S %z" "$clean_time" "+%s"
+    date -j -f "%d %b %Y %H:%M:%S %z" "$clean_time" "+%s"
   else
     date -d "$clean_time" "+%s"
   fi
@@ -69,6 +69,7 @@ done
 # applying filters
 {
 	while read -r line; do
+		# apply -a [DATETIME] filter
 		if [[ -n "$TIME_A" ]]; then
 			RAW_LOG_TIME=$(echo "$line" | awk '{print $4 " " $5}')
 			LOG_TIME_SECS=$(get_log_timestamp "$RAW_LOG_TIME")
@@ -76,9 +77,9 @@ done
 			if [[ "$TIME_A" -gt "$LOG_TIME_SECS" ]]; then
 				continue
 			fi
-
 		fi
 
+		# apply -b [DATETIME] filter
 		if [[ -n "$TIME_B" ]]; then
 			RAW_LOG_TIME=$(echo "$line" | awk '{print $4 " " $5}')
 			LOG_TIME_SECS=$(get_log_timestamp "$RAW_LOG_TIME")
@@ -86,7 +87,24 @@ done
 			if [[ "$TIME_B" -lt "$LOG_TIME_SECS" ]]; then
 				continue
 			fi
+		fi
 
+		# apply -ip [IPADDR] filter
+		if [[ -n "$IP" ]]; then
+			CURRENT_IP=$(echo "$line" | awk '{print $1}')
+
+			if [[ "$IP" != "$CURRENT_IP" ]]; then
+				continue
+			fi
+		fi
+
+		# apply -uri [URI] filter
+		if [[ -n "$URI" ]]; then
+			CURRENT_URI=$(echo "$line" | awk '{print $7}')
+
+			if [[ "$URI" != "$CURRENT_URI" ]]; then
+				continue
+			fi
 		fi
 		
 		echo "$line"
