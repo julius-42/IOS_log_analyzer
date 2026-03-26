@@ -1,4 +1,9 @@
 #!/bin/bash
+#
+# wana.sh
+# Riešenie IOS, 1. Uloha, 25.3.2026
+# Autor: Julius Kundrat FIT
+
 
 # initializing variables
 TIME_A=""
@@ -7,36 +12,42 @@ IP=""
 URI=""
 COMMAND=""
 FILE=""
+CAT=""
 
-# convert argument time format to Unix seconds
-get_timestamp() {
-  if [[ "$(uname)" == "Darwin" ]]; then
-    date -j -f "%Y-%m-%d %H:%M:%S" "$1" "+%s"
-  else
-    date -d "$1" "+%s"
+# convert argument time format to Unix epoch
+arg_ts_to_epoch() {
+	# date-time formatting for MacOS
+  	if [[ "$(uname)" == "Darwin" ]]; then
+    	date -j -f "%Y-%m-%d %H:%M:%S" "$1" "+%s"
+	# date-time formatting for GNU Linux
+  	else
+    	date -d "$1" "+%s"
   fi
 }
 
 # clean the log time from brackets and other unwanted chars
-clean_log_date() {
-  echo "$1" | sed 's/\[//g; s/\]//g; s/\// /g; s/:/ /'
+clean_ts() {
+  echo "$1" | sed 's/\[//g; s/\]//g; s/\// /g; s/:/ /' 
 }
 
-# convert clean log time format to Unix seconds
-get_log_timestamp() {
-  local clean_time=$(clean_log_date "$1")
+# convert clean log time format to Unix epoch
+log_ts_to_epoch() {
+  	local clean_time=$(clean_ts "$1")
   
-  if [[ "$(uname)" == "Darwin" ]]; then
-    date -j -f "%d %b %Y %H:%M:%S %z" "$clean_time" "+%s"
-  else
-    date -d "$clean_time" "+%s"
-  fi
+  	# MacOS
+	if [[ "$(uname)" == "Darwin" ]]; then
+    	date -j -f "%d %b %Y %H:%M:%S %z" "$clean_time" "+%s"
+	# GNU Linux
+  	else
+    	date -d "$clean_time" "+%s"
+  	fi
 }
 
 
 # parsing arguments
 while [[ $# -gt 0 ]]; do
 	case "$1" in
+		# parses all filters
 		-a|-b|-ip|-uri)
 			if [[ -z "$2" || "$2" == -* ]]; then
 				echo "Argument for $1 is missing or invalid."
@@ -44,22 +55,25 @@ while [[ $# -gt 0 ]]; do
 			fi
 	
 			case "$1" in
-				-a) TIME_A=$(get_timestamp "$2") ;;
-				-b) TIME_B=$(get_timestamp "$2") ;;
+				-a) TIME_A=$(arg_ts_to_epoch "$2") ;;
+				-b) TIME_B=$(arg_ts_to_epoch "$2") ;;
 				-ip) IP="$2" ;;
 				-uri) URI="$2" ;;
 			esac
 
 			shift 2 ;;
 
+		# parses command
 		list-ip|list-hosts|list-uri|hist-ip|hist-load)
 			COMMAND="$1"
 			shift ;;
 
+		# parses log file
 		*.log|.gz)
 			FILE="$1"
 			shift ;;
 
+		# checks for invalid arguments
 		*)
 			echo "Invalid option: $1"
 			exit 1 ;;
@@ -72,7 +86,7 @@ done
 		# apply -a [DATETIME] filter
 		if [[ -n "$TIME_A" ]]; then
 			RAW_LOG_TIME=$(echo "$line" | awk '{print $4 " " $5}')
-			LOG_TIME_SECS=$(get_log_timestamp "$RAW_LOG_TIME")
+			LOG_TIME_SECS=$(log_ts_to_epoch "$RAW_LOG_TIME")
 
 			if [[ "$TIME_A" -gt "$LOG_TIME_SECS" ]]; then
 				continue
@@ -82,7 +96,7 @@ done
 		# apply -b [DATETIME] filter
 		if [[ -n "$TIME_B" ]]; then
 			RAW_LOG_TIME=$(echo "$line" | awk '{print $4 " " $5}')
-			LOG_TIME_SECS=$(get_log_timestamp "$RAW_LOG_TIME")
+			LOG_TIME_SECS=$(log_ts_to_epoch "$RAW_LOG_TIME")
 
 			if [[ "$TIME_B" -lt "$LOG_TIME_SECS" ]]; then
 				continue
@@ -114,15 +128,17 @@ done
 # executing commands 
 } | case "$COMMAND" in
 	"")
-		awk '{print $0}' ;;
+		awk '{print $0}' ;; # prints the whole log file
 	list-ip) 
-		awk '{print $1}' ;;
+		awk '{print $1}' ;; # prints the 2nd column - IP
 	list-hosts)
-		awk '{print $11}' ;;
+		awk '{print $11}' ;; # prints the 12th column - Hosts
 	list-uri)
-		awk '{print $7}' ;;
+		awk '{print $7}' ;; # prints the 8th column - URI
 	hist-ip)
-		awk '{print $1}' | sort | uniq -c | sort -nr  |head -n 15 | \
+		# sorts the IP column, counts unique occurrences, reverses the logs
+		awk '{print $1}' | sort | uniq -c | sort -nr  | \
+		# prints N '#' for each log - N = number of occurrences
 		awk  '{ printf "%-39s  (%d): ", $2, $1; for(i=0; i<$1; i++) printf "#"; printf "\n" }' ;;
 	hist-load)
 		awk '{split($4, t, ":");
