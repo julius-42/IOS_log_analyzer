@@ -48,19 +48,33 @@ log_ts_to_epoch() {
 while [[ $# -gt 0 ]]; do
 	case "$1" in
 		# parses all filters
-		-a|-b|-ip|-uri)
+		-a)
 			if [[ -z "$2" || "$2" == -* ]]; then
 				echo "Argument for $1 is missing or invalid."
 				exit 1
 			fi
-	
-			case "$1" in
-				-a) TIME_A=$(arg_ts_to_epoch "$2") ;;
-				-b) TIME_B=$(arg_ts_to_epoch "$2") ;;
-				-ip) IP="$2" ;;
-				-uri) URI="$2" ;;
-			esac
-
+			TIME_A=$(arg_ts_to_epoch "$2")
+			shift 2 ;;
+		-b)
+			if [[ -z "$2" || "$2" == -* ]]; then
+				echo "Argument for $1 is missing or invalid."
+				exit 1
+			fi
+			TIME_B=$(arg_ts_to_epoch "$2")
+			shift 2 ;;
+		-ip)
+			if [[ -z "$2" || "$2" == -* ]]; then
+				echo "Argument for $1 is missing or invalid."
+				exit 1
+			fi
+			IP="$2"
+			shift 2 ;;
+		-uri)
+			if [[ -z "$2" || "$2" == -* ]]; then
+				echo "Argument for $1 is missing or invalid."
+				exit 1
+			fi
+			URI="$2"
 			shift 2 ;;
 
 		# parses command
