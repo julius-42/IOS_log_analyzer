@@ -42,37 +42,35 @@ log_ts_to_epoch() {
   	fi
 }
 
+# checks if filter has an argument
+is_valid() {
+    case "$2" in
+        list-ip | list-hosts | list-uri | hist-ip | hist-load | -* | "")
+			echo "Error: Argument for $1 is missing."
+			exit 1
+			;;
+    esac
+}
+
 
 # parsing arguments
 while [ $# -gt 0 ]; do
 	case "$1" in
 		# parses all filters
 		-a)
-			if [ -z "$2" || "$2" == -* ]; then
-				echo "Argument for $1 is missing or invalid."
-				exit 1
-			fi
+			is_valid "$1" "$2"
 			TIME_A=$(arg_ts_to_epoch "$2")
 			shift 2 ;;
 		-b)
-			if [ -z "$2" || "$2" == -* ]; then
-				echo "Argument for $1 is missing or invalid."
-				exit 1
-			fi
+			is_valid "$1" "$2"
 			TIME_B=$(arg_ts_to_epoch "$2")
 			shift 2 ;;
 		-ip)
-			if [ -z "$2" || "$2" == -* ]; then
-				echo "Argument for $1 is missing or invalid."
-				exit 1
-			fi
+			is_valid "$1" "$2"
 			IP="$2"
 			shift 2 ;;
 		-uri)
-			if [ -z "$2" || "$2" == -* ]; then
-				echo "Argument for $1 is missing or invalid."
-				exit 1
-			fi
+			is_valid "$1" "$2"
 			URI="$2"
 			shift 2 ;;
 
@@ -93,16 +91,32 @@ while [ $# -gt 0 ]; do
 	esac
 done
 
+# if no log file is provided, program will read stdin
+if [ -z "$FILES" ]; then
+	FILES="-"
+fi
+
 
 # applying filters
 {
 	for FILE in $FILES; do
 		case "$FILE" in
-            *.gz) CAT="gzip -dc" ;;
-            *)    CAT="cat" ;;
+            *.gz) 
+				CAT="gzip -dc"
+				TARGET="$FILE"
+				;;
+			"-") 
+				CAT="cat"
+				echo "Input your log here and press CTRL+D" >&2
+				TARGET="/dev/stdin"
+				;;
+            *)    
+				CAT="cat" 
+				TARGET="$FILE"
+				;;
         esac
 
-		$CAT "$FILE" | while read -r line; do
+		$CAT "$TARGET" | while read -r line; do
 			# apply -a [DATETIME] filter
 			if [ -n "$TIME_A" ]; then
 				RAW_LOG_TIME=$(echo "$line" | awk '{print $4 " " $5}')
@@ -167,7 +181,7 @@ done
 		# sorts the IP column, counts unique occurrences, reverses the logs
 		awk '{print $1}' | sort | uniq -c | sort -nr  | \
 		# prints N '#' for each log, N = number of occurrences
-		awk  '{ printf "%s  (%d): ", $2, $1; for(i=0; i<$1; i++) printf "#"; printf "\n" }' ;;
+		awk  '{ printf "%s (%d): ", $2, $1; for(i=0; i<$1; i++) printf "#"; printf "\n" }' ;;
 	hist-load)
 		# converts minutes to '00', sorts the timedate column, counts unique occurences
 		awk '{split($4, t, ":");
