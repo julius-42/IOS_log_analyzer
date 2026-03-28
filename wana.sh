@@ -11,7 +11,7 @@ TIME_B=""
 IP=""
 URI=""
 COMMAND=""
-FILES=()
+FILES=""
 
 # convert argument timestamp format to Unix epoch
 arg_ts_to_epoch() {
@@ -26,16 +26,16 @@ arg_ts_to_epoch() {
 
 # clean the log timestamp from brackets and other unwanted chars
 clean_ts() {
-  echo "$1" | sed 's/\[//g; s/\]//g; s/\// /g; s/:/ /' 
+  echo "$1" | sed 's/\[//g; s/ .*//; s/\// /g; s/:/ /' 
 }
 
 # convert clean log timestamp format to Unix epoch
 log_ts_to_epoch() {
-  	local clean_time=$(clean_ts "$1")
+  	clean_time=$(clean_ts "$1")
   
   	# MacOS
 	if [[ "$(uname)" == "Darwin" ]]; then
-    	date -j -f "%d %b %Y %H:%M:%S %z" "$clean_time" "+%s"
+    	date -j -f "%d %b %Y %H:%M:%S" "$clean_time" "+%s"
 	# GNU Linux
   	else
     	date -d "$clean_time" "+%s"
@@ -44,32 +44,32 @@ log_ts_to_epoch() {
 
 
 # parsing arguments
-while [[ $# -gt 0 ]]; do
+while [ $# -gt 0 ]; do
 	case "$1" in
 		# parses all filters
 		-a)
-			if [[ -z "$2" || "$2" == -* ]]; then
+			if [ -z "$2" || "$2" == -* ]; then
 				echo "Argument for $1 is missing or invalid."
 				exit 1
 			fi
 			TIME_A=$(arg_ts_to_epoch "$2")
 			shift 2 ;;
 		-b)
-			if [[ -z "$2" || "$2" == -* ]]; then
+			if [ -z "$2" || "$2" == -* ]; then
 				echo "Argument for $1 is missing or invalid."
 				exit 1
 			fi
 			TIME_B=$(arg_ts_to_epoch "$2")
 			shift 2 ;;
 		-ip)
-			if [[ -z "$2" || "$2" == -* ]]; then
+			if [ -z "$2" || "$2" == -* ]; then
 				echo "Argument for $1 is missing or invalid."
 				exit 1
 			fi
 			IP="$2"
 			shift 2 ;;
 		-uri)
-			if [[ -z "$2" || "$2" == -* ]]; then
+			if [ -z "$2" || "$2" == -* ]; then
 				echo "Argument for $1 is missing or invalid."
 				exit 1
 			fi
@@ -83,7 +83,7 @@ while [[ $# -gt 0 ]]; do
 
 		# parses log files
 		*.log|*.gz)
-			FILES+=("$1")
+			FILES="$FILES $1"
 			shift ;;
 
 		# checks for invalid arguments
@@ -96,25 +96,25 @@ done
 
 # applying filters
 {
-	for FILE in "${FILES[@]}"; do
-		CAT="cat"
-		if [[ "$FILE" == *.gz ]]; then
-			CAT="gzip -dc"
-		fi
+	for FILE in $FILES; do
+		case "$FILE" in
+            *.gz) CAT="gzip -dc" ;;
+            *)    CAT="cat" ;;
+        esac
 
-		while read -r line; do
+		$CAT "$FILE" | while read -r line; do
 			# apply -a [DATETIME] filter
-			if [[ -n "$TIME_A" ]]; then
+			if [ -n "$TIME_A" ]; then
 				RAW_LOG_TIME=$(echo "$line" | awk '{print $4 " " $5}')
 				LOG_TIME_SECS=$(log_ts_to_epoch "$RAW_LOG_TIME")
 
-				if [[ "$TIME_A" -gt "$LOG_TIME_SECS" ]]; then
+				if [ "$TIME_A" -gt "$LOG_TIME_SECS" ]; then
 					continue
 				fi
 			fi
 
 			# apply -b [DATETIME] filter
-			if [[ -n "$TIME_B" ]]; then
+			if [ -n "$TIME_B" ]; then
 				RAW_LOG_TIME=$(echo "$line" | awk '{print $4 " " $5}')
 				LOG_TIME_SECS=$(log_ts_to_epoch "$RAW_LOG_TIME")
 
@@ -124,25 +124,25 @@ done
 			fi
 
 			# apply -ip [IPADDR] filter
-			if [[ -n "$IP" ]]; then
+			if [ -n "$IP" ]; then
 				CURRENT_IP=$(echo "$line" | awk '{print $1}')
 
-				if [[ "$IP" != "$CURRENT_IP" ]]; then
+				if [ "$IP" != "$CURRENT_IP" ]; then
 					continue
 				fi
 			fi
 
 			# apply -uri [URI] filter
-			if [[ -n "$URI" ]]; then
+			if [ -n "$URI" ]; then
 				CURRENT_URI=$(echo "$line" | awk '{print $7}')
 
-				if [[ "$URI" != "$CURRENT_URI" ]]; then
+				if [ "$URI" != "$CURRENT_URI" ]; then
 					continue
 				fi
 			fi
 			
 			echo "$line"
-		done < <($CAT "$FILE")
+		done
 	done
 
 
@@ -153,7 +153,14 @@ done
 	list-ip) 
 		awk '{print $1}' ;; # prints the 2nd column - IP
 	list-hosts)
-		awk '{print $11}' ;; # prints the 12th column - Hosts
+		awk '{print $1}' | sort -u | while read -r ip; do
+			name=$(host "$ip")
+			if [ "$name" == *")" ]; then 
+				echo "$ip"
+			else
+				echo "$name" | sed 's/.* //; s/\(.*\)\./\1/'
+			fi
+		done ;;
 	list-uri)
 		awk '{print $7}' ;; # prints the 8th column - URI
 	hist-ip)
