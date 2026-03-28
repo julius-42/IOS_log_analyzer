@@ -11,8 +11,7 @@ TIME_B=""
 IP=""
 URI=""
 COMMAND=""
-FILE=""
-CAT="cat"
+FILES=()
 
 # convert argument timestamp format to Unix epoch
 arg_ts_to_epoch() {
@@ -82,15 +81,10 @@ while [[ $# -gt 0 ]]; do
 			COMMAND="$1"
 			shift ;;
 
-		# parses log file
-		*.log)
-			FILE="$1"
+		# parses log files
+		*.log|*.gz)
+			FILES+=("$1")
 			shift ;;
-		# parses log file in .gz
-		*.gz)
-			FILE="$1"
-            CAT="zcat"  # uses zcat for .gz files
-            shift ;;
 
 		# checks for invalid arguments
 		*)
@@ -99,49 +93,57 @@ while [[ $# -gt 0 ]]; do
 	esac
 done
 
+
 # applying filters
 {
-	while read -r line; do
-		# apply -a [DATETIME] filter
-		if [[ -n "$TIME_A" ]]; then
-			RAW_LOG_TIME=$(echo "$line" | awk '{print $4 " " $5}')
-			LOG_TIME_SECS=$(log_ts_to_epoch "$RAW_LOG_TIME")
-
-			if [[ "$TIME_A" -gt "$LOG_TIME_SECS" ]]; then
-				continue
-			fi
+	for FILE in "${FILES[@]}"; do
+		CAT="cat"
+		if [[ "$FILE" == *.gz ]]; then
+			CAT="gzip -dc"
 		fi
 
-		# apply -b [DATETIME] filter
-		if [[ -n "$TIME_B" ]]; then
-			RAW_LOG_TIME=$(echo "$line" | awk '{print $4 " " $5}')
-			LOG_TIME_SECS=$(log_ts_to_epoch "$RAW_LOG_TIME")
+		while read -r line; do
+			# apply -a [DATETIME] filter
+			if [[ -n "$TIME_A" ]]; then
+				RAW_LOG_TIME=$(echo "$line" | awk '{print $4 " " $5}')
+				LOG_TIME_SECS=$(log_ts_to_epoch "$RAW_LOG_TIME")
 
-			if [[ "$TIME_B" -lt "$LOG_TIME_SECS" ]]; then
-				continue
+				if [[ "$TIME_A" -gt "$LOG_TIME_SECS" ]]; then
+					continue
+				fi
 			fi
-		fi
 
-		# apply -ip [IPADDR] filter
-		if [[ -n "$IP" ]]; then
-			CURRENT_IP=$(echo "$line" | awk '{print $1}')
+			# apply -b [DATETIME] filter
+			if [[ -n "$TIME_B" ]]; then
+				RAW_LOG_TIME=$(echo "$line" | awk '{print $4 " " $5}')
+				LOG_TIME_SECS=$(log_ts_to_epoch "$RAW_LOG_TIME")
 
-			if [[ "$IP" != "$CURRENT_IP" ]]; then
-				continue
+				if [[ "$TIME_B" -lt "$LOG_TIME_SECS" ]]; then
+					continue
+				fi
 			fi
-		fi
 
-		# apply -uri [URI] filter
-		if [[ -n "$URI" ]]; then
-			CURRENT_URI=$(echo "$line" | awk '{print $7}')
+			# apply -ip [IPADDR] filter
+			if [[ -n "$IP" ]]; then
+				CURRENT_IP=$(echo "$line" | awk '{print $1}')
 
-			if [[ "$URI" != "$CURRENT_URI" ]]; then
-				continue
+				if [[ "$IP" != "$CURRENT_IP" ]]; then
+					continue
+				fi
 			fi
-		fi
-		
-		echo "$line"
-	done < <($CAT "$FILE")
+
+			# apply -uri [URI] filter
+			if [[ -n "$URI" ]]; then
+				CURRENT_URI=$(echo "$line" | awk '{print $7}')
+
+				if [[ "$URI" != "$CURRENT_URI" ]]; then
+					continue
+				fi
+			fi
+			
+			echo "$line"
+		done < <($CAT "$FILE")
+	done
 
 
 # executing commands 
@@ -165,9 +167,10 @@ done
 			split(substr(t[1], 2), date, "/");
 			print date[3] "/" date[2] "/" date[1] " " t[2] ":00";
 		}' | sort | uniq -c | \
-		# creates a dictionary for all months Aaa : xx
+
 		# creates a histogram for each hour with YYYY-MM-DD HH:00 format
 		awk 'BEGIN {
+			# creates a dictionary for all months Aaa : xx
 			split("Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec", months);
 			for (i=1; i<=12; i++){ 
 				m[months[i]] = sprintf("%02d", i)
@@ -176,10 +179,13 @@ done
 		{
 			split($2, td, "/");
 			new_td = td[1] "-" m[td[2]] "-" td[3] " " $3;
-			printf "%s (%d): ", new_td, $1;
-			for(i=0; i<$1; i++){
-				printf "#"; 
-			} 
+
+			# creates a bar of $1 "#"
+			bar = sprintf("%*s", $1, "");
+			gsub(" ", "#", bar)
+
+			# prints the final histogram line
+			printf "%s (%d): %s", new_td, $1, bar;
 			printf "\n";
 		}' ;;
 esac
