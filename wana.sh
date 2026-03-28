@@ -12,9 +12,9 @@ IP=""
 URI=""
 COMMAND=""
 FILE=""
-CAT=""
+CAT="cat"
 
-# convert argument time format to Unix epoch
+# convert argument timestamp format to Unix epoch
 arg_ts_to_epoch() {
 	# date-time formatting for MacOS
   	if [[ "$(uname)" == "Darwin" ]]; then
@@ -25,12 +25,12 @@ arg_ts_to_epoch() {
   fi
 }
 
-# clean the log time from brackets and other unwanted chars
+# clean the log timestamp from brackets and other unwanted chars
 clean_ts() {
   echo "$1" | sed 's/\[//g; s/\]//g; s/\// /g; s/:/ /' 
 }
 
-# convert clean log time format to Unix epoch
+# convert clean log timestamp format to Unix epoch
 log_ts_to_epoch() {
   	local clean_time=$(clean_ts "$1")
   
@@ -83,9 +83,14 @@ while [[ $# -gt 0 ]]; do
 			shift ;;
 
 		# parses log file
-		*.log|.gz)
+		*.log)
 			FILE="$1"
 			shift ;;
+		# parses log file in .gz
+		*.gz)
+			FILE="$1"
+            CAT="zcat"  # uses zcat for .gz files
+            shift ;;
 
 		# checks for invalid arguments
 		*)
@@ -136,7 +141,7 @@ done
 		fi
 		
 		echo "$line"
-	done < "$FILE"
+	done < <($CAT "$FILE")
 
 
 # executing commands 
@@ -152,21 +157,30 @@ done
 	hist-ip)
 		# sorts the IP column, counts unique occurrences, reverses the logs
 		awk '{print $1}' | sort | uniq -c | sort -nr  | \
-		# prints N '#' for each log - N = number of occurrences
-		awk  '{ printf "%-39s  (%d): ", $2, $1; for(i=0; i<$1; i++) printf "#"; printf "\n" }' ;;
+		# prints N '#' for each log, N = number of occurrences
+		awk  '{ printf "%s  (%d): ", $2, $1; for(i=0; i<$1; i++) printf "#"; printf "\n" }' ;;
 	hist-load)
+		# converts minutes to '00', sorts the timedate column, counts unique occurences
 		awk '{split($4, t, ":");
-			print substr(t[1], 2) ":" t[2] ":00";
+			split(substr(t[1], 2), date, "/");
+			print date[3] "/" date[2] "/" date[1] " " t[2] ":00";
 		}' | sort | uniq -c | \
+		# creates a dictionary for all months Aaa : xx
+		# creates a histogram for each hour with YYYY-MM-DD HH:00 format
 		awk 'BEGIN {
 			split("Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec", months);
-			for (i=1; i<=12; i++) m[months[i]] = sprintf("%02d", i)
+			for (i=1; i<=12; i++){ 
+				m[months[i]] = sprintf("%02d", i)
+			} 
 		}
 		{
-			split($2, d, "/");
-			new_date = d[1] "-" m[d[2]] "-" d[3];
-			printf "%-19s (%2d): ", new_date, $1;
-			for(i=0; i<$1; i++) printf "#"; printf "\n";
+			split($2, td, "/");
+			new_td = td[1] "-" m[td[2]] "-" td[3] " " $3;
+			printf "%s (%d): ", new_td, $1;
+			for(i=0; i<$1; i++){
+				printf "#"; 
+			} 
+			printf "\n";
 		}' ;;
 esac
 
